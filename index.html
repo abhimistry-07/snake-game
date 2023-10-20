@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Snake Game</title>
+    <link rel="stylesheet" type="text/css" href="snake.css" />
+  </head>
+  <body>
+    <button onclick="">Start</button>
+    <div id="game-board"></div>
+    <div id="score">Score: 0</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
+
+    <!-- <script src="snake.js"></script> -->
+
+    <script type="text/javascript">
+      // Load the model.
+      let model;
+      const URL = "https://teachablemachine.withgoogle.com/models/Y49u_IwML/"; // Replace with your model URL
+      tf.loadLayersModel(URL + "model.json").then((loadedModel) => {
+        model = loadedModel;
+      });
+
+      async function createModel() {
+        const checkpointURL = URL + "model.json"; // model topology
+        const metadataURL = URL + "metadata.json"; // model metadata
+
+        const recognizer = speechCommands.create(
+          "BROWSER_FFT", // fourier transform type, not useful to change
+          undefined, // speech commands vocabulary feature, not useful for your models
+          checkpointURL,
+          metadataURL
+        );
+
+        // check that model and metadata are loaded via HTTPS requests.
+        await recognizer.ensureModelLoaded();
+
+        return recognizer;
+      }
+
+      document.addEventListener("DOMContentLoaded", (event) => {
+        // Get a reference to the game board
+        let gameBoard = document.getElementById("game-board");
+
+        // Create the dots and add them to the game board
+        for (let row = 0; row < 30; row++) {
+          for (let col = 0; col < 30; col++) {
+            let dot = document.createElement("div");
+            dot.classList.add("dot");
+            gameBoard.appendChild(dot);
+          }
+        }
+
+        function Snake() {
+          this.body = [[0, 0]]; // Start in the center of the game board
+          this.direction = "Right"; // The direction the snake is currently moving in
+
+          let initialSegment =
+            document.getElementsByClassName("dot")[0 * 30 + 0];
+          initialSegment.classList.add("snake");
+
+          // Create a score letiable
+          let score = 0;
+
+          // Get a reference to the score display
+          let scoreDisplay = document.getElementById("score");
+
+          // Moves the snake one space in its current direction
+          this.move = function () {
+            // Get the coordinates of the head of the snake
+            let head = this.body[0].slice(); // Copy the head
+
+            // Update the head's coordinates based on the current direction
+            switch (this.direction) {
+              case "Up":
+                head[1]--;
+                break;
+              case "Down":
+                head[1]++;
+                break;
+              case "Left":
+                head[0]--;
+                break;
+              case "Right":
+                head[0]++;
+                break;
+            }
+
+            // Check for collisions with the edge of the game board
+            if (head[0] < 0 || head[1] < 0 || head[0] >= 30 || head[1] >= 30) {
+              return false; // Game over
+            }
+
+            // Check for collisions with the snake's own body by seeing if any body segment has the same coordinates as the new head
+            for (let i = 0; i < this.body.length; i++) {
+              if (this.body[i][0] === head[0] && this.body[i][1] === head[1]) {
+                return false; // Game over
+              }
+            }
+
+            // No collisions, so we can move the snake
+            this.body.unshift(head); // Add the new head to the beginning of the body
+
+            // If the snake didn't eat food, remove the last segment of the body
+            if (
+              snake.body[0][0] !== food.position[0] ||
+              snake.body[0][1] !== food.position[1]
+            ) {
+              this.body.pop();
+            } else {
+              // The snake ate food, so create a new food and increase the score
+              createNewFood();
+              score++;
+              scoreDisplay.textContent = "Score: " + score;
+            }
+            return true; // The snake successfully moved
+          };
+
+          // Changes the direction of the snake
+          this.turn = function (direction) {
+            this.direction = direction;
+            // console.log(this.direction,'>>>>>>.');
+          };
+
+          async function init() {
+            const recognizer = await createModel();
+            const classLabels = recognizer.wordLabels(); // get class labels
+            const labelContainer = document.getElementById("label-container");
+            for (let i = 0; i < classLabels.length; i++) {
+              labelContainer?.appendChild(document.createElement("div"));
+            }
+
+            recognizer.listen(
+              (result) => {
+                const scores = result.scores; // probability of prediction for each class
+
+                // Get the highest scoring class
+                const highestScoreIndex = scores.indexOf(Math.max(...scores));
+                const highestScoringClass = classLabels[highestScoreIndex];
+
+                console.log(highestScoringClass, ">>>>>>>");
+                // Control the snake based on the highest scoring class
+                if (highestScoringClass === "Up") {
+                  snake.turn("Up");
+                } else if (highestScoringClass === "Down") {
+                  snake.turn("Down");
+                } else if (highestScoringClass === "Left") {
+                  snake.turn("Left");
+                } else if (highestScoringClass === "Right") {
+                  snake.turn("Right");
+                }
+              },
+              {
+                includeSpectrogram: true,
+                probabilityThreshold: 0.75,
+                invokeCallbackOnNoiseAndUnknown: true,
+                overlapFactor: 0.75,
+              }
+            );
+          }
+
+          init();
+        }
+
+        function Food() {
+          // Start with a random position for the food
+          this.position = [
+            // 5, 0,
+            Math.floor(Math.random() * 30),
+            Math.floor(Math.random() * 30),
+          ];
+        }
+
+        // Create a new snake and a new food
+        let snake = new Snake();
+        let food = new Food();
+
+        function drawSnake() {
+          // Clear all dots from being a part of snake or food
+          let dots = document.getElementsByClassName("dot");
+          for (let i = 0; i < dots.length; i++) {
+            dots[i].classList.remove("snake");
+            dots[i].classList.remove("food");
+          }
+
+          // Draw the snake
+          for (let i = 0; i < snake.body.length; i++) {
+            let x = snake.body[i][0];
+            let y = snake.body[i][1];
+            dots[y * 30 + x].classList.add("snake");
+          }
+
+          // Draw the food
+          let x = food.position[0];
+          let y = food.position[1];
+          dots[y * 30 + x].classList.add("food");
+        }
+
+        // Call this function whenever you need to create a new food
+        function createNewFood() {
+          food = new Food();
+          drawSnake();
+        }
+
+        // Call this function in your setInterval loop
+        function gameLoop() {
+          if (!snake.move()) {
+            // If move returns false, the game is over
+            alert("Game over!");
+          } else {
+            // Check if the snake ate the food
+            if (
+              snake.body[0][0] === food.position[0] &&
+              snake.body[0][1] === food.position[1]
+            ) {
+              // If it did, create a new food
+              createNewFood();
+            } else {
+              drawSnake();
+            }
+          }
+        }
+
+        // Start the game loop
+        setInterval(gameLoop, 500);
+      });
+    </script>
+  </body>
+</html>
